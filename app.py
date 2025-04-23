@@ -2,78 +2,92 @@ from flask import Flask, request, jsonify
 import swisseph as swe
 import datetime
 import math
-
 import os
 
 app = Flask(__name__)
 swe.set_ephe_path("./ephe")
 
-@app.route("/chart", methods=["POST"])
-def generate_chart():
-    data = request.json
-    # ... process natal chart
-    return jsonify({"status": "success", "message": "Chart data here"})
+PLANETS = {
+    "Sun": swe.SUN,
+    "Moon": swe.MOON,
+    "Mercury": swe.MERCURY,
+    "Venus": swe.VENUS,
+    "Mars": swe.MARS,
+    "Jupiter": swe.JUPITER,
+    "Saturn": swe.SATURN,
+    "Uranus": swe.URANUS,
+    "Neptune": swe.NEPTUNE,
+    "Pluto": swe.PLUTO
+}
+
+ASPECTS = {
+    "Conjunction": 0,
+    "Sextile": 60,
+    "Square": 90,
+    "Trine": 120,
+    "Opposition": 180
+}
+
+def normalize_angle(angle):
+    return angle % 360
+
+def get_aspects(planets):
+    results = []
+    items = list(planets.items())
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            p1, lon1 = items[i]
+            p2, lon2 = items[j]
+            angle = abs(lon1 - lon2)
+            angle = min(angle, 360 - angle)
+            for name, target in ASPECTS.items():
+                if abs(angle - target) <= 6:  # 6° orb
+                    results.append({
+                        "between": [p1, p2],
+                        "aspect": name,
+                        "orb": round(abs(angle - target), 2)
+                    })
+    return results
 
 @app.route("/", methods=["GET"])
 def home():
     return "Swiss Ephemeris API is running!"
-    
-def calculate_aspects(planet_positions):
-    aspects = []
-    aspect_angles = {
-        "Conjunction": 0,
-        "Opposition": 180,
-        "Trine": 120,
-        "Square": 90,
-        "Sextile": 60
-    }
-    orb = 6  # degrees of allowable difference
 
-    planets = list(planet_positions.items())
-    for i in range(len(planets)):
-        for j in range(i + 1, len(planets)):
-            name1, pos1 = planets[i]
-            name2, pos2 = planets[j]
-            angle = abs(pos1 - pos2)
-            if angle > 180:
-                angle = 360 - angle
-            for aspect_name, aspect_angle in aspect_angles.items():
-                if abs(angle - aspect_angle) <= orb:
-                    aspects.append({
-                        "planet1": name1,
-                        "planet2": name2,
-                        "aspect": aspect_name,
-                        "angle": round(angle, 2)
-                    })
-    return aspects
-
-@app.route('/natal-chart', methods=['POST'])
-def natal_chart():
+@app.route("/chart", methods=["POST"])
+def generate_chart():
     data = request.json
-    birth_date = data['birth_date']  # e.g., '1990-05-15'
-    birth_time = data['birth_time']  # e.g., '14:30'
-    lat = float(data['latitude'])
-    lon = float(data['longitude'])
+    birth_date = data["birth_date"]  # format: YYYY-MM-DD
+    birth_time = data["birth_time"]  # format: HH:MM
+    place = data["birth_place"]
 
-    dt = datetime.datetime.strptime(f"{birth_date} {birth_time}", "%Y-%m-%d %H:%M")
-    jd_ut = swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
+    year, month, day = map(int, birth_date.split("-"))
+    hour, minute = map(int, birth_time.split(":"))
 
+    # Convert to UT
+    timezone = place["timezone"]
+    ut_hour = hour - timezone + minute / 60.0
+
+    jd_ut = swe.julday(year, month, day, ut_hour)
+
+    # Planet positions
     planet_positions = {}
-    for planet in range(swe.SUN, swe.PLUTO + 1):
-        pos, _ = swe.calc_ut(jd_ut, planet)
-        planet_positions[swe.get_planet_name(planet)] = pos[0]
+    for name, pid in PLANETS.items():
+        lon, _, _ = swe.calc_ut(jd_ut, pid)[0:3]
+        planet_positions[name] = round(lon, 6)
 
-    # Ascendant and Houses
-    hsys = 'P'  # Placidus
-    cusps, ascmc = swe.houses(jd_ut, lat, lon, hsys)
+    # Ascendant & houses
+    lat = place["latitude"]
+    lon = place["longitude"]
+    ascmc, houses, _ = swe.houses_ex(jd_ut, lat, lon, b'P')  # Placidus
+    ascendant = round(ascmc[0], 6)
+    house_cusps = [round(h, 6) for h in houses]
+
+    # Aspects
+    aspects = get_aspects(planet_positions)
 
     return jsonify({
-        "julian_day": jd_ut,
-        "planet_positions": planet_positions,
-        "aspects": calculate_aspects(planet_positions),
-        "ascendant": ascmc[0],
-        "houses": cusps[:12]
+        "planets": planet_positions,
+        "ascendant": ascendant,
+        "houses": house_cusps,
+        "aspects": aspects
     })
-
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=10000)
