@@ -3,8 +3,21 @@ import swisseph as swe
 import datetime
 import math
 
-app = Flask(__name__)
+import os
 
+app = Flask(__name__)
+swe.set_ephe_path("./ephe")
+
+@app.route("/chart", methods=["POST"])
+def generate_chart():
+    data = request.json
+    # ... process natal chart
+    return jsonify({"status": "success", "message": "Chart data here"})
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Swiss Ephemeris API is running!"
+    
 def calculate_aspects(planet_positions):
     aspects = []
     aspect_angles = {
