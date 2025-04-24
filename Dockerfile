@@ -8,15 +8,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create ephe directory and copy ephemeris files
+# Create ephe directory and copy ephemeris files directly
 RUN mkdir -p /app/ephe
-COPY ephe/ephe/*.se1 /app/ephe/
+COPY ephe/*.se1 /app/ephe/
 
 # Copy the rest of the application
 COPY . .
 
 # Debug: List contents of ephe directory
-RUN echo "Listing contents of /app/ephe:" && ls -la /app/ephe
+RUN echo "Contents of /app/ephe:" && ls -la /app/ephe
 
 # Expose port 5000
 EXPOSE 5000
