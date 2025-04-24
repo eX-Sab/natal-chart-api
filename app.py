@@ -7,9 +7,33 @@ from functools import wraps
 
 app = Flask(__name__)
 
-# Set ephemeris path relative to the application directory
-ephe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ephe')
-swe.set_ephe_path(ephe_path)
+# Try multiple possible paths for ephemeris files
+possible_paths = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ephe'),
+    '/app/ephe',
+    './ephe',
+    os.path.join(os.getcwd(), 'ephe')
+]
+
+ephe_path = None
+for path in possible_paths:
+    if os.path.exists(path) and any(fname.endswith('.se1') for fname in os.listdir(path)):
+        ephe_path = path
+        break
+
+if ephe_path is None:
+    print("Error: Could not find ephemeris files in any of these locations:")
+    for path in possible_paths:
+        print(f"- {path}")
+        if os.path.exists(path):
+            print(f"  Contents: {os.listdir(path)}")
+        else:
+            print("  Directory does not exist")
+else:
+    print(f"Found ephemeris files in: {ephe_path}")
+    print(f"Contents: {os.listdir(ephe_path)}")
+
+swe.set_ephe_path(ephe_path or './ephe')
 
 # Verify ephemeris files are accessible
 try:
