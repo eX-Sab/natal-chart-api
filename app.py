@@ -72,7 +72,8 @@ def generate_chart():
     # Planet positions
     planet_positions = {}
     for name, pid in PLANETS.items():
-        lon, _, _ = swe.calc_ut(jd_ut, pid)[0:3]
+        result, retflag = swe.calc_ut(jd_ut, pid)
+        lon = result[0]
         planet_positions[name] = round(lon, 6)
 
     # Ascendant & houses
