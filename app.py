@@ -3,9 +3,24 @@ import swisseph as swe
 import datetime
 import math
 import os
+from functools import wraps
 
 app = Flask(__name__)
 swe.set_ephe_path("./ephe")
+
+# Get API key from environment variable
+API_KEY = os.environ.get('API_KEY')
+if not API_KEY:
+    raise ValueError("API_KEY environment variable must be set")
+
+def require_api_key(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        if not api_key or api_key != API_KEY:
+            return jsonify({"error": "Invalid or missing API key"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 PLANETS = {
     "Sun": swe.SUN,
@@ -50,10 +65,12 @@ def get_aspects(planets):
     return results
 
 @app.route("/", methods=["GET"])
+@require_api_key
 def home():
     return "Swiss Ephemeris API is running!"
 
 @app.route("/chart", methods=["POST"])
+@require_api_key
 def generate_chart():
     data = request.json
     birth_date = data["birth_date"]  # format: YYYY-MM-DD
