@@ -1,8 +1,9 @@
 services:
   - type: web
     name: natal-chart-api
-    env: docker
-    dockerfilePath: ./Dockerfile
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
     envVars:
       - key: API_KEY
         sync: false

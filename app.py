@@ -7,43 +7,12 @@ from functools import wraps
 
 app = Flask(__name__)
 
-# Try multiple possible paths for ephemeris files
-possible_paths = [
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ephe'),
-    '/app/ephe',
-    './ephe',
-    os.path.join(os.getcwd(), 'ephe')
-]
+# Set ephemeris path - look for files in the same directory as the script
+EPHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ephe')
+print(f"Looking for ephemeris files in: {EPHE_PATH}")
+print(f"Directory contents: {os.listdir(EPHE_PATH) if os.path.exists(EPHE_PATH) else 'Directory not found'}")
 
-ephe_path = None
-for path in possible_paths:
-    if os.path.exists(path) and any(fname.endswith('.se1') for fname in os.listdir(path)):
-        ephe_path = path
-        break
-
-if ephe_path is None:
-    print("Error: Could not find ephemeris files in any of these locations:")
-    for path in possible_paths:
-        print(f"- {path}")
-        if os.path.exists(path):
-            print(f"  Contents: {os.listdir(path)}")
-        else:
-            print("  Directory does not exist")
-else:
-    print(f"Found ephemeris files in: {ephe_path}")
-    print(f"Contents: {os.listdir(ephe_path)}")
-
-swe.set_ephe_path(ephe_path or './ephe')
-
-# Verify ephemeris files are accessible
-try:
-    # Test calculation to verify ephemeris files
-    test_jd = swe.julday(2000, 1, 1, 0)
-    swe.calc_ut(test_jd, swe.SUN)
-except Exception as e:
-    print(f"Error initializing Swiss Ephemeris: {e}")
-    print(f"Looking for files in: {ephe_path}")
-    print(f"Directory contents: {os.listdir(ephe_path) if os.path.exists(ephe_path) else 'Directory not found'}")
+swe.set_ephe_path(EPHE_PATH)
 
 # Get API key from environment variable
 API_KEY = os.environ.get('API_KEY')
@@ -121,13 +90,14 @@ def get_element_modal_dist(positions):
     modal = {"Cardinal": 0, "Fixed": 0, "Mutable": 0}
     
     for planet_data in positions.values():
-        sign = planet_data["sign"]
-        for element, signs in ELEMENTS.items():
-            if sign in signs:
-                elemental[element] += 1
-        for modality, signs in MODALITIES.items():
-            if sign in signs:
-                modal[modality] += 1
+        if "sign" in planet_data:  # Skip Ascendant which doesn't have house
+            sign = planet_data["sign"]
+            for element, signs in ELEMENTS.items():
+                if sign in signs:
+                    elemental[element] += 1
+            for modality, signs in MODALITIES.items():
+                if sign in signs:
+                    modal[modality] += 1
     
     return elemental, modal
 
@@ -141,7 +111,7 @@ def get_aspects(positions):
         for j in range(i + 1, len(planets)):
             p1, p2 = planets[i], planets[j]
             # Skip aspects with North Node and Chiron
-            if p1 in ["North Node", "Chiron"] or p2 in ["North Node", "Chiron"]:
+            if p1 in ["North Node", "Chiron"] or p2 in ["North Node", "Chiron"] or p1 == "Ascendant" or p2 == "Ascendant":
                 continue
             lon1 = positions[p1]["degree"] + (SIGNS.index(positions[p1]["sign"]) * 30)
             lon2 = positions[p2]["degree"] + (SIGNS.index(positions[p2]["sign"]) * 30)
@@ -184,7 +154,7 @@ def generate_chart():
     lat = place["latitude"]
     lon = place["longitude"]
     houses, ascmc = swe.houses_ex(jd_ut, lat, lon, b'P')  # Placidus
-    ascendant = ascmc[0]
+    ascendant = normalize_angle(ascmc[0])
     house_cusps = [normalize_angle(h) for h in houses]
 
     # Calculate planet positions with the new format
