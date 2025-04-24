@@ -79,7 +79,7 @@ def generate_chart():
     # Ascendant & houses
     lat = place["latitude"]
     lon = place["longitude"]
-    ascmc, houses, _ = swe.houses_ex(jd_ut, lat, lon, b'P')  # Placidus
+    houses, ascmc = swe.houses_ex(jd_ut, lat, lon, b'P')  # Placidus
     ascendant = round(ascmc[0], 6)
     house_cusps = [round(h, 6) for h in houses]
 
