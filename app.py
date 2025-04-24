@@ -32,7 +32,28 @@ PLANETS = {
     "Saturn": swe.SATURN,
     "Uranus": swe.URANUS,
     "Neptune": swe.NEPTUNE,
-    "Pluto": swe.PLUTO
+    "Pluto": swe.PLUTO,
+    "North Node": swe.MEAN_NODE,
+    "Chiron": swe.CHIRON
+}
+
+SIGNS = [
+    "Aries", "Taurus", "Gemini", "Cancer", 
+    "Leo", "Virgo", "Libra", "Scorpio", 
+    "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+]
+
+ELEMENTS = {
+    "Fire": ["Aries", "Leo", "Sagittarius"],
+    "Earth": ["Taurus", "Virgo", "Capricorn"],
+    "Air": ["Gemini", "Libra", "Aquarius"],
+    "Water": ["Cancer", "Scorpio", "Pisces"]
+}
+
+MODALITIES = {
+    "Cardinal": ["Aries", "Cancer", "Libra", "Capricorn"],
+    "Fixed": ["Taurus", "Leo", "Scorpio", "Aquarius"],
+    "Mutable": ["Gemini", "Virgo", "Sagittarius", "Pisces"]
 }
 
 ASPECTS = {
@@ -43,24 +64,60 @@ ASPECTS = {
     "Opposition": 180
 }
 
+def get_sign(degree):
+    sign_num = int(degree / 30)
+    degree_in_sign = degree % 30
+    return SIGNS[sign_num], round(degree_in_sign, 2)
+
+def get_house(degree, houses):
+    for i in range(len(houses)):
+        next_house = houses[(i + 1) % 12]
+        if next_house < houses[i]:  # Handle house crossing 0°
+            if degree >= houses[i] or degree < next_house:
+                return i + 1
+        elif houses[i] <= degree < next_house:
+            return i + 1
+    return 1
+
+def get_element_modal_dist(positions):
+    elemental = {"Fire": 0, "Earth": 0, "Water": 0, "Air": 0}
+    modal = {"Cardinal": 0, "Fixed": 0, "Mutable": 0}
+    
+    for planet_data in positions.values():
+        sign = planet_data["sign"]
+        for element, signs in ELEMENTS.items():
+            if sign in signs:
+                elemental[element] += 1
+        for modality, signs in MODALITIES.items():
+            if sign in signs:
+                modal[modality] += 1
+    
+    return elemental, modal
+
 def normalize_angle(angle):
     return angle % 360
 
-def get_aspects(planets):
+def get_aspects(positions):
     results = []
-    items = list(planets.items())
-    for i in range(len(items)):
-        for j in range(i + 1, len(items)):
-            p1, lon1 = items[i]
-            p2, lon2 = items[j]
+    planets = list(positions.keys())
+    for i in range(len(planets)):
+        for j in range(i + 1, len(planets)):
+            p1, p2 = planets[i], planets[j]
+            # Skip aspects with North Node and Chiron
+            if p1 in ["North Node", "Chiron"] or p2 in ["North Node", "Chiron"]:
+                continue
+            lon1 = positions[p1]["degree"] + (SIGNS.index(positions[p1]["sign"]) * 30)
+            lon2 = positions[p2]["degree"] + (SIGNS.index(positions[p2]["sign"]) * 30)
             angle = abs(lon1 - lon2)
             angle = min(angle, 360 - angle)
-            for name, target in ASPECTS.items():
-                if abs(angle - target) <= 6:  # 6° orb
+            
+            for aspect_name, aspect_angle in ASPECTS.items():
+                orb = abs(angle - aspect_angle)
+                if orb <= 6:  # 6° orb
                     results.append({
+                        "type": aspect_name,
                         "between": [p1, p2],
-                        "aspect": name,
-                        "orb": round(abs(angle - target), 2)
+                        "orb": round(orb, 2)
                     })
     return results
 
@@ -86,30 +143,48 @@ def generate_chart():
 
     jd_ut = swe.julday(year, month, day, ut_hour)
 
-    # Planet positions
-    planet_positions = {}
-    for name, pid in PLANETS.items():
-        result, retflag = swe.calc_ut(jd_ut, pid)
-        lon = result[0]
-        planet_positions[name] = round(lon, 6)
-
-    # Ascendant & houses
+    # Calculate houses first
     lat = place["latitude"]
     lon = place["longitude"]
     houses, ascmc = swe.houses_ex(jd_ut, lat, lon, b'P')  # Placidus
-    ascendant = round(ascmc[0], 6)
-    house_cusps = [round(h, 6) for h in houses]
+    ascendant = ascmc[0]
+    house_cusps = [normalize_angle(h) for h in houses]
 
-    # Aspects
-    aspects = get_aspects(planet_positions)
+    # Calculate planet positions with the new format
+    positions = {}
+    
+    # Add Ascendant first
+    asc_sign, asc_degree = get_sign(ascendant)
+    positions["Ascendant"] = {
+        "sign": asc_sign,
+        "degree": asc_degree
+    }
+
+    # Calculate planet positions
+    for name, pid in PLANETS.items():
+        result, _ = swe.calc_ut(jd_ut, pid)
+        lon = normalize_angle(result[0])
+        sign, degree = get_sign(lon)
+        house = get_house(lon, house_cusps)
+        
+        positions[name] = {
+            "sign": sign,
+            "degree": degree,
+            "house": house
+        }
+
+    # Calculate aspects
+    aspects = get_aspects(positions)
+
+    # Calculate distributions
+    elemental_dist, modal_dist = get_element_modal_dist(positions)
 
     return jsonify({
-        "planets": planet_positions,
-        "ascendant": ascendant,
-        "houses": house_cusps,
-        "aspects": aspects
+        **positions,
+        "aspects": aspects,
+        "elemental_distribution": elemental_dist,
+        "modal_distribution": modal_dist
     })
 
-# Ensure the app runs when executed directly
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
