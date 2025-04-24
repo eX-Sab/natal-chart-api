@@ -6,7 +6,20 @@ import os
 from functools import wraps
 
 app = Flask(__name__)
-swe.set_ephe_path("./ephe")
+
+# Set ephemeris path relative to the application directory
+ephe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ephe')
+swe.set_ephe_path(ephe_path)
+
+# Verify ephemeris files are accessible
+try:
+    # Test calculation to verify ephemeris files
+    test_jd = swe.julday(2000, 1, 1, 0)
+    swe.calc_ut(test_jd, swe.SUN)
+except Exception as e:
+    print(f"Error initializing Swiss Ephemeris: {e}")
+    print(f"Looking for files in: {ephe_path}")
+    print(f"Directory contents: {os.listdir(ephe_path) if os.path.exists(ephe_path) else 'Directory not found'}")
 
 # Get API key from environment variable
 API_KEY = os.environ.get('API_KEY')

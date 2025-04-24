@@ -4,11 +4,16 @@ FROM python:3.10
 # Set working directory
 WORKDIR /app
 
-# Copy all files into the container
-COPY . .
-
-# Install dependencies
+# Copy requirements first for better caching
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Create ephe directory and copy ephemeris files
+RUN mkdir -p /app/ephe
+COPY ephe/ephe/*.se1 /app/ephe/
+
+# Copy the rest of the application
+COPY . .
 
 # Expose port 5000
 EXPOSE 5000
