@@ -15,6 +15,9 @@ COPY ephe/ephe/*.se1 /app/ephe/
 # Copy the rest of the application
 COPY . .
 
+# List contents of ephe directory for debugging
+RUN ls -la /app/ephe
+
 # Expose port 5000
 EXPOSE 5000
 
